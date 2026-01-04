@@ -4,9 +4,6 @@ const FILENAME: &str = "./inputs/input.txt";
 
 fn main() {
     let sequences = parse_input();
-    // println!("{:?}", sequences[0]);
-    // println!("{:?}", derivative(&sequences[0]));
-
     let mut total = 0;
     for seq in sequences.iter() {
         let val = next_val(seq);
@@ -17,7 +14,6 @@ fn main() {
     let mut total_2 = 0;
     for seq in sequences.iter() {
         let val = prev_val(seq);
-        // println!("Previous: {}", val);
         total_2 += val;
     }
     println!("Part 2: {}", total_2);
@@ -56,7 +52,6 @@ fn derivative (sequence: &Vec<i32>) -> Vec<i32> {
     }
 
     return d;
-    // return sequence.iter().skip(1).fold(vec![sequence[0]], |mut acc, curr| { acc.push(*curr - acc.last().unwrap()); acc })
 }
 
 
