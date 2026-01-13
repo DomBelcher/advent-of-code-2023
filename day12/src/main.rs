@@ -1,46 +1,27 @@
 use std::{collections::HashMap, fs};
 
-const FILENAME: &str = "./inputs/example_2.txt";
+const FILENAME: &str = "./inputs/input.txt";
 
 const OPERATIONAL_CHAR: char = '.';
 const DAMAGED_CHAR: char = '#';
 const UNKNOWN_CHAR: char = '?';
-const CONDITION_MAPPING: [char; 2] = [OPERATIONAL_CHAR, DAMAGED_CHAR];
-
-const VERBOSE: bool = false;
 
 fn main() {
 
     let spring_rows = parse_input();
     println!("Rows: {}", spring_rows.len());
 
-    let mut known_solutions = HashMap::new();
-
     let mut total = 0;
     let mut unfolded_total = 0;
 
-    for (idx, row) in spring_rows.iter().enumerate() {
-         println!("------{}-----", idx);
-        // println!("{:?}", row);
-        // let valid_permutations = brute_force(row);
-        let valid_permutations = solve(&row, &mut known_solutions);
+    for (_, row) in spring_rows.iter().enumerate() {
+        let valid_permutations = solve(&row.conditions, &row.damaged_blocks);
         total += valid_permutations;
 
         let unfolded_row = row.repeat(5);
-        let count = solve_(&unfolded_row.conditions, &unfolded_row.damaged_blocks);
-        println!("{}", count);
+        let count = solve(&unfolded_row.conditions, &unfolded_row.damaged_blocks);
+        
         unfolded_total += count;
-        // unfolded_total += solve(&unfolded_row, &mut known_solutions);
-        // if row.conditions.contains(&OPERATIONAL_CHAR) {
-        //     let count = split_solve(&unfolded_row);
-        //     println!("{}", count);
-        //     unfolded_total += count;
-        // } else {
-        //     let count = solve(&unfolded_row, &mut known_solutions);
-        //     println!("{}", count);
-        //     unfolded_total += count;
-        // }
-        // println!("{}", valid_permutations);
     }
 
     println!("Part 1: {}", total);
@@ -48,379 +29,71 @@ fn main() {
 
 }
 
-fn solve_ (conditions: &Vec<char>, damaged_blocks: &Vec<usize>) -> usize {
-    if conditions.len() == 0 && damaged_blocks.len() == 0 {
-        return 1;
+fn solve (conditions: &Vec<char>, damaged_blocks: &Vec<usize>) -> usize {
+    return _solve (conditions, damaged_blocks, &mut HashMap::new());
+}
+
+fn _solve (conditions: &Vec<char>, damaged_blocks: &Vec<usize>, memo: &mut HashMap<(Vec<char>, Vec<usize>), usize>) -> usize {
+    if memo.contains_key(&(conditions.clone(), damaged_blocks.clone())) {
+        return *memo.get(&(conditions.clone(), damaged_blocks.clone())).unwrap();
     }
 
-    if damaged_blocks.iter().sum::<usize>() > conditions.len() {
+    if conditions.len() == 0 && damaged_blocks.len() != 0 {
         return 0;
     }
 
-    if conditions.iter().all(|c| *c == UNKNOWN_CHAR) {
-        return solve_all_unknown(conditions, damaged_blocks);
+    if conditions.len() == 0 {
+        return 1
     }
 
-    if conditions.iter().any(|c| *c == OPERATIONAL_CHAR) {
-        return solve_with_operational(conditions, damaged_blocks);
-    }
-
-    return solve_with_damaged(conditions, damaged_blocks);
-}
-
-fn solve_all_unknown (conditions: &Vec<char>, damaged_blocks: &Vec<usize>) -> usize {
-    // println!("solving for all unknown:");
-    // println!("{:?} | {:?}", conditions, damaged_blocks);
-    let n_bins = damaged_blocks.len() + 1;
-    let n_balls = conditions.len() - damaged_blocks.iter().sum::<usize>();
-    // println!("Output: {}", choose(n_balls + n_bins - 1, n_bins - 1));
-
-    return pascal(n_balls + n_bins - 1, n_bins - 1);
-}
-
-fn solve_with_operational (conditions: &Vec<char>, damaged_blocks: &Vec<usize>) -> usize {
-    // println!("Solving with operational:");
-    // println!("{:?} | {:?}", conditions, damaged_blocks);
-    let condition_sections = conditions.split(|c| *c == OPERATIONAL_CHAR).collect::<Vec<&[char]>>();
-    let conditions_0 = condition_sections[0].to_vec();
-    let conditions_1 = condition_sections.iter().skip(1).fold(vec![], |mut acc, curr| { acc.append(&mut curr.to_vec()); return acc });
-
-    let mut total = 0;
-    for i in 1..damaged_blocks.len() {
-        let damaged_0 = damaged_blocks[..i].to_vec();
-        let damaged_1 =  damaged_blocks[i..].to_vec();
-
-        // println!("Solving pair - split {}", i);
-        // println!("{:?} | {:?}", conditions_0, damaged_0);
-        // println!("{:?} | {:?}", conditions_1, damaged_1);
-
-        // println!("values: {}, {}", solve_(&conditions_0, &damaged_0),  solve_(&conditions_1, &damaged_1));
-
-        total += solve_(&conditions_0, &damaged_0) * solve_(&conditions_1, &damaged_1);
-    }
-
-    return total;
-}
-
-fn solve_with_damaged (conditions: &Vec<char>, damaged_blocks: &Vec<usize>) -> usize {
-    let inverted_conditions = conditions.iter().map(|c| { if *c == DAMAGED_CHAR { return OPERATIONAL_CHAR } return *c }).collect::<Vec<char>>();
-    let all_unknown = vec![UNKNOWN_CHAR; conditions.len()];
-
-    return solve_all_unknown(&all_unknown, damaged_blocks) - solve_with_operational(&inverted_conditions, damaged_blocks);
-}
-
-fn split_solve (row: &SpringRow) -> usize {
-    let condition_sections = row.conditions.split(|c| *c == OPERATIONAL_CHAR).collect::<Vec<&[char]>>();
-    
-    let mut section_configs = vec![];
-
-    for section in condition_sections.iter() {
-        let possible_configs = possible_configurations(&section.to_vec());
-        section_configs.push(possible_configs);
-    }
-
-    return valid_configurations(&row.damaged_blocks, &section_configs, 0);
-
-    // return 0;
-}
-
-fn valid_configurations (damaged_blocks: &Vec<usize>, configs: &Vec<HashMap<Vec<usize>, usize>>, section_idx: usize) -> usize {
-    if configs.len() == section_idx {
-        return 1;
-    }
-
-    let section_config = &configs[section_idx];
-
-    let mut total = 0;
-    
-    for (config, count) in section_config.iter() {
-        if damaged_blocks.starts_with(config) {
-            total += count * valid_configurations(&damaged_blocks[config.len()..].to_vec(), configs, section_idx + 1);
-        }
-    }
-
-    return total;
-}
-
-fn possible_configurations (conditions: &Vec<char>) -> HashMap<Vec<usize>, usize> {
-    let mut configurations = HashMap::new();
-
-    let n_unknowns = conditions.iter().filter(|s| **s == UNKNOWN_CHAR).count();
-    let unknown_indices = find_unknowns(conditions);
-    // println!("Unknown indices: {:?}", unknown_indices);
-
-    // if n_unknowns == 0 {
-    //     configurations.insert(condition_representation(&conditions), 1);
-    // }
-
-    for i in 0..2_usize.pow(n_unknowns as u32) {
-        let conditions = fill_unknowns(conditions, i, &unknown_indices);
-        let block_representation = condition_representation(&conditions);
-        if configurations.contains_key(&block_representation) {
-            *configurations.get_mut(&block_representation).unwrap() += 1;
-        } else {
-            configurations.insert(block_representation, 1);
-        }
-    }
-
-    // println!("Possible configurations for permutation: {:?}", conditions);
-    // println!("{:?}", configurations);
-
-    return configurations;
-}
-
-fn fill_all_certain_unknowns(row: &SpringRow) -> SpringRow {
-    let mut filled_row = row.clone();
-
-    loop {
-        let unknown_indices: Vec<usize> = find_unknowns(&filled_row.conditions);
-        let new_filled_row = fill_certain_unknowns(&filled_row, &unknown_indices, 0);
-
-        if filled_row.conditions == new_filled_row.conditions {
-            return filled_row;
-        }
-        filled_row = new_filled_row
-    }
-}
-
-fn fill_certain_unknowns (row: &SpringRow, unknown_indices: &Vec<usize>, unknown_idx: usize) -> SpringRow {
-    if unknown_idx == unknown_indices.len() {
-        return row.clone();
-    }
-
-    let with_damaged = fill_unknown(&row.conditions, unknown_indices[unknown_idx], DAMAGED_CHAR);
-    let with_operational = fill_unknown(&row.conditions, unknown_indices[unknown_idx], OPERATIONAL_CHAR);
-
-    let valid_with_damaged = check_potentially_valid(&with_damaged, &row.damaged_blocks);
-    let valid_with_operational = check_potentially_valid(&with_operational, &row.damaged_blocks);
-
-    let next_conditions;
-
-    if valid_with_damaged && !valid_with_operational {
-        next_conditions = with_damaged;
-    } else if !valid_with_damaged && valid_with_operational {
-        next_conditions = with_operational;
-    } else {
-        next_conditions = (*row.conditions).to_vec();
-    }
-
-    let next_row = SpringRow {
-        conditions: next_conditions,
-        damaged_blocks: (*row.damaged_blocks).to_vec()
-    };
-
-    return fill_certain_unknowns(&next_row, unknown_indices, unknown_idx + 1)
-}
-
-fn stripped_conditions (conditions: &Vec<char>, unknown_indices: &Vec<usize>) -> Vec<char> {
-    if unknown_indices.len() == 0 {
-        return conditions.clone();
-    }
-
-    return conditions[unknown_indices[0]..].to_vec();
-}
-
-// this is still a bit slow but whatever
-fn solve (row: &SpringRow, known_solutions: &mut HashMap<Vec<char>, usize>) -> usize {
-    let partially_filled_row = row;
-    // let partially_filled_row = fill_all_certain_unknowns(&row);
-
-    if VERBOSE { println!("Solving for: {:?}", partially_filled_row) };
-    let unknown_indices: Vec<usize> = find_unknowns(&partially_filled_row.conditions);
-
-    // if known_solutions.contains_key(&stripped_conditions(&row.conditions, &unknown_indices)) {
-    //     return *known_solutions.get(&stripped_conditions(&row.conditions, &unknown_indices)).unwrap();
-    // }
-
-    if unknown_indices.len() == 0 {
-        if VERBOSE { println!("No unknowns to fill, checking if solution is valid...") };
-        if check_valid(&partially_filled_row.conditions, &partially_filled_row.damaged_blocks) {
-            if VERBOSE { println!("Valid") };
-            return 1;
-        } else {
-            if VERBOSE { println!("Invalid") };
+    if damaged_blocks.len() == 0 {
+        if conditions.iter().any(|c| *c == DAMAGED_CHAR) {
             return 0;
         }
+        return 1
     }
+    let damaged_total = damaged_blocks.iter().sum::<usize>() + damaged_blocks.len() - 1;
 
     let mut total = 0;
-    let with_damaged = fill_unknown(&partially_filled_row.conditions, unknown_indices[0], DAMAGED_CHAR);
-    let with_operational = fill_unknown(&partially_filled_row.conditions, unknown_indices[0], OPERATIONAL_CHAR);
+    let mut idx = 0;
+    loop {
+        if idx + damaged_total > conditions.len() {
+            break
+        }
+        let consumable = consume(conditions, idx, damaged_blocks[0], damaged_blocks.len() == 1);
+        if consumable {
+            let next_pointer;
+            if damaged_blocks.len() == 1 {
+                next_pointer = idx+damaged_blocks[0];
+            } else {
+                next_pointer = idx+damaged_blocks[0] + 1;
+            }
 
-    if VERBOSE { 
-    println!("Checking potential validity of damaged & operational variants:");
-    println!("Damaged: {:?}", with_damaged);
-    println!("Operational: {:?}", with_operational);
-    }
-    let mut new_unknown_indices = unknown_indices.clone();
-    new_unknown_indices.remove(0);
-
-    if check_potentially_valid(&with_damaged, &partially_filled_row.damaged_blocks) {
-        if VERBOSE { println!("damaged variant is potentially valid...") };
-        let hash_key = stripped_conditions(&with_damaged, &new_unknown_indices);
-        let new_row = SpringRow {
-            conditions: with_damaged,
-            damaged_blocks: (*partially_filled_row.damaged_blocks).to_vec()
-        };
-        let n_solutions = solve(&new_row, known_solutions);
-        known_solutions.insert(hash_key, n_solutions);
-        total += n_solutions;
-    }
-    if check_potentially_valid(&with_operational, &partially_filled_row.damaged_blocks) {
-        if VERBOSE { println!("oeprational variant is potentially valid...") };
-        let hash_key = stripped_conditions(&with_operational, &new_unknown_indices);
-        let new_row = SpringRow {
-            conditions: with_operational,
-            damaged_blocks: (*partially_filled_row.damaged_blocks).to_vec()
-        };
-        let n_solutions = solve(&new_row, known_solutions);
-        known_solutions.insert(hash_key, n_solutions);
-        total += n_solutions;
+            total += _solve (
+                &conditions[next_pointer..].to_vec(),
+                &damaged_blocks[1..].to_vec(),
+                memo
+            );
+        }
+        if conditions[idx] == DAMAGED_CHAR {
+            break
+        }
+        idx += 1;
     }
 
-    return total
+    memo.insert((conditions.clone(), damaged_blocks.clone()), total);
+    return total;
 }
 
-fn fill_unknown (conditions: &Vec<char>, unknown_idx: usize, unknown_val: char) -> Vec<char> {
-    let mut new_conditions = conditions.clone();
-    new_conditions[unknown_idx] = unknown_val;
-    return new_conditions
-}
-
-fn find_unknowns (conditions: &Vec<char>) -> Vec<usize> {
-    return conditions.iter().enumerate().filter(|(idx, s)| **s == UNKNOWN_CHAR).map(|(idx, s)| idx).collect::<Vec<_>>();
-}
-
-fn brute_force (row: &SpringRow) -> usize {
-    let mut valid_combinations = 0;
-
-    let n_unknowns = row.conditions.iter().filter(|s| **s == UNKNOWN_CHAR).count();
-    let unknown_indices = find_unknowns(&row.conditions);
-    // println!("Unknown indices: {:?}", unknown_indices);
-
-    for i in 0..2_usize.pow(n_unknowns as u32) {
-        // let partial_conditions = partial_fill_unknowns(&row.conditions, i, &unknown_indices, partial_unknowns);
-        // if !check_potentially_valid(&partial_conditions,  &row.damaged_blocks) {
-
-        // }
-
-
-        let conditions = fill_unknowns(&row.conditions, i, &unknown_indices);
-        if check_valid(&conditions, &row.damaged_blocks) {
-            valid_combinations += 1;
-        }
+fn consume (conditions: &Vec<char>, index: usize, block_size: usize, last: bool) -> bool {
+    if conditions[index..(index+block_size)].iter().any(|c| *c == OPERATIONAL_CHAR) {
+        return false
+    }
+    if !last && conditions[index+block_size] == DAMAGED_CHAR {
+        return false
     }
 
-    return valid_combinations;
-}
-
-fn check_potentially_valid (conditions: &Vec<char>, damaged_blocks: &Vec<usize>) -> bool {
-    let mut block_representation: Vec<usize> = vec![0];
-    let mut block_idx = 0;
-    // println!("Checking: {:?}", conditions);
-
-    for c in conditions {
-        if *c == UNKNOWN_CHAR {
-            // return or something
-            block_representation.pop();
-            return damaged_blocks.starts_with(&block_representation);
-        }
-
-        if *c == DAMAGED_CHAR {
-            *block_representation.last_mut().unwrap() += 1;
-            continue;
-        }
-
-        if *block_representation.last().unwrap() == 0 {
-            // condition is operational, in a string of operational gears
-            // 
-            continue;
-        }
-
-        
-        if block_idx >= damaged_blocks.len() || *block_representation.last().unwrap() != damaged_blocks[block_idx] {
-            // condition is operational, end of block of damaged gears
-            // number of damaged gears doesn't match expected number
-            // not valid
-            return false
-        }
-
-        // condition is operational
-        // start new count of damaged gears
-        // will increment when next see a damaged gear
-        block_idx += 1;
-        block_representation.push(0);
-    }
-    if *block_representation.last().unwrap() == 0 {
-        block_representation.pop();
-    }
-    // println!("Representation: {:?}", block_representation);
-
-    return block_representation == *damaged_blocks;
-}
-
-fn partial_fill_unknowns (conditions: &Vec<char>, mask: usize, unknown_indices: &Vec<usize>, partial_unknowns: usize) -> Vec<char> {
-    let condition_mapping = [OPERATIONAL_CHAR, DAMAGED_CHAR];
-    let mut condition_permutation = conditions.clone();
-
-    for idx in 0..partial_unknowns {
-        let index = unknown_indices[idx];
-        // println!("mask: {}, idx: {}, n_indices: {}", mask, idx, n_indices);
-        let condition_val = (mask >> idx) % 2;
-        // println!("{}", condition_val);
-        condition_permutation[index] = condition_mapping[condition_val];
-    }
-    return condition_permutation;
-}
-
-fn fill_unknowns (conditions: &Vec<char>, mask: usize, unknown_indices: &Vec<usize>) -> Vec<char> {
-    let n_indices = unknown_indices.len();
-    let condition_mapping = [OPERATIONAL_CHAR, DAMAGED_CHAR];
-
-    // let mut total = 0;
-    // for i in 0..unknown_indices.len() {
-    let mut condition_permutation = conditions.clone();
-
-    for (idx, index) in unknown_indices.iter().enumerate() {
-        // println!("mask: {}, idx: {}, n_indices: {}", mask, idx, n_indices);
-        let condition_val = (mask >> idx) % 2;
-        // println!("{}", condition_val);
-        condition_permutation[*index] = condition_mapping[condition_val];
-    }
-
-    return condition_permutation;
-}
-
-fn condition_representation (conditions: &Vec<char>) -> Vec<usize> {
-    let mut block_representation: Vec<usize> = vec![0];
-
-    for c in conditions {
-        if *c == UNKNOWN_CHAR {
-            panic!()
-        }
-
-        if *c == DAMAGED_CHAR {
-            *block_representation.last_mut().unwrap() += 1;
-            continue;
-        }
-
-        if *block_representation.last().unwrap() == 0 {
-            continue;
-        }
-
-        block_representation.push(0);
-    }
-    if *block_representation.last().unwrap() == 0 {
-        block_representation.pop();
-    }
-    return block_representation;
-}
-
-fn check_valid (conditions: &Vec<char>, damaged_blocks: &Vec<usize>) -> bool {
-    let block_representation = condition_representation(conditions);
-    // println!("Representation: {:?}", block_representation);
-
-    return block_representation == *damaged_blocks;
+    return true
 }
 
 fn parse_input () -> Vec<SpringRow> {
@@ -464,30 +137,4 @@ impl SpringRow {
             damaged_blocks: repeated_damage
         }
     }
-}
-
-fn factorial(n: usize) -> usize {
-    (1..=n).product()
-}
-
-fn choose(n: usize, r: usize) -> usize {
-    (n - r + 1..=n).product::<usize>() / factorial(r)
-}
-
-fn pascal (n: usize, r: usize) -> usize {
-    return _pascal(n, r, &mut HashMap::new())
-}
-
-fn _pascal (n: usize, r: usize, memo: &mut HashMap<(usize, usize), usize>) -> usize {
-    if memo.contains_key(&(n, r)) {
-        return *memo.get(&(n, r)).unwrap();
-    }
-
-    if n == 0 || n == r || r == 0 {
-        return 1
-    }
-
-    let v =  _pascal (n-1, r-1, memo) + _pascal (n-1, r, memo);
-    memo.insert((n ,r), v);
-    return v
 }
