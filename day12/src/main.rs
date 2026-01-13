@@ -1,6 +1,6 @@
 use std::{collections::HashMap, fs};
 
-const FILENAME: &str = "./inputs/input.txt";
+const FILENAME: &str = "./inputs/example_2.txt";
 
 const OPERATIONAL_CHAR: char = '.';
 const DAMAGED_CHAR: char = '#';
@@ -10,6 +10,7 @@ const CONDITION_MAPPING: [char; 2] = [OPERATIONAL_CHAR, DAMAGED_CHAR];
 const VERBOSE: bool = false;
 
 fn main() {
+
     let spring_rows = parse_input();
     println!("Rows: {}", spring_rows.len());
 
@@ -26,23 +27,86 @@ fn main() {
         total += valid_permutations;
 
         let unfolded_row = row.repeat(5);
+        let count = solve_(&unfolded_row.conditions, &unfolded_row.damaged_blocks);
+        println!("{}", count);
+        unfolded_total += count;
         // unfolded_total += solve(&unfolded_row, &mut known_solutions);
-        if row.conditions.contains(&OPERATIONAL_CHAR) {
-            let count = split_solve(&unfolded_row);
-            println!("{}", count);
-            unfolded_total += count;
-        } else {
-            let count = solve(&unfolded_row, &mut known_solutions);
-            println!("{}", count);
-            unfolded_total += count;
-        }
+        // if row.conditions.contains(&OPERATIONAL_CHAR) {
+        //     let count = split_solve(&unfolded_row);
+        //     println!("{}", count);
+        //     unfolded_total += count;
+        // } else {
+        //     let count = solve(&unfolded_row, &mut known_solutions);
+        //     println!("{}", count);
+        //     unfolded_total += count;
+        // }
         // println!("{}", valid_permutations);
     }
 
     println!("Part 1: {}", total);
     println!("Part 2: {}", unfolded_total);
 
+}
 
+fn solve_ (conditions: &Vec<char>, damaged_blocks: &Vec<usize>) -> usize {
+    if conditions.len() == 0 && damaged_blocks.len() == 0 {
+        return 1;
+    }
+
+    if damaged_blocks.iter().sum::<usize>() > conditions.len() {
+        return 0;
+    }
+
+    if conditions.iter().all(|c| *c == UNKNOWN_CHAR) {
+        return solve_all_unknown(conditions, damaged_blocks);
+    }
+
+    if conditions.iter().any(|c| *c == OPERATIONAL_CHAR) {
+        return solve_with_operational(conditions, damaged_blocks);
+    }
+
+    return solve_with_damaged(conditions, damaged_blocks);
+}
+
+fn solve_all_unknown (conditions: &Vec<char>, damaged_blocks: &Vec<usize>) -> usize {
+    // println!("solving for all unknown:");
+    // println!("{:?} | {:?}", conditions, damaged_blocks);
+    let n_bins = damaged_blocks.len() + 1;
+    let n_balls = conditions.len() - damaged_blocks.iter().sum::<usize>();
+    // println!("Output: {}", choose(n_balls + n_bins - 1, n_bins - 1));
+
+    return pascal(n_balls + n_bins - 1, n_bins - 1);
+}
+
+fn solve_with_operational (conditions: &Vec<char>, damaged_blocks: &Vec<usize>) -> usize {
+    // println!("Solving with operational:");
+    // println!("{:?} | {:?}", conditions, damaged_blocks);
+    let condition_sections = conditions.split(|c| *c == OPERATIONAL_CHAR).collect::<Vec<&[char]>>();
+    let conditions_0 = condition_sections[0].to_vec();
+    let conditions_1 = condition_sections.iter().skip(1).fold(vec![], |mut acc, curr| { acc.append(&mut curr.to_vec()); return acc });
+
+    let mut total = 0;
+    for i in 1..damaged_blocks.len() {
+        let damaged_0 = damaged_blocks[..i].to_vec();
+        let damaged_1 =  damaged_blocks[i..].to_vec();
+
+        // println!("Solving pair - split {}", i);
+        // println!("{:?} | {:?}", conditions_0, damaged_0);
+        // println!("{:?} | {:?}", conditions_1, damaged_1);
+
+        // println!("values: {}, {}", solve_(&conditions_0, &damaged_0),  solve_(&conditions_1, &damaged_1));
+
+        total += solve_(&conditions_0, &damaged_0) * solve_(&conditions_1, &damaged_1);
+    }
+
+    return total;
+}
+
+fn solve_with_damaged (conditions: &Vec<char>, damaged_blocks: &Vec<usize>) -> usize {
+    let inverted_conditions = conditions.iter().map(|c| { if *c == DAMAGED_CHAR { return OPERATIONAL_CHAR } return *c }).collect::<Vec<char>>();
+    let all_unknown = vec![UNKNOWN_CHAR; conditions.len()];
+
+    return solve_all_unknown(&all_unknown, damaged_blocks) - solve_with_operational(&inverted_conditions, damaged_blocks);
 }
 
 fn split_solve (row: &SpringRow) -> usize {
@@ -400,4 +464,30 @@ impl SpringRow {
             damaged_blocks: repeated_damage
         }
     }
+}
+
+fn factorial(n: usize) -> usize {
+    (1..=n).product()
+}
+
+fn choose(n: usize, r: usize) -> usize {
+    (n - r + 1..=n).product::<usize>() / factorial(r)
+}
+
+fn pascal (n: usize, r: usize) -> usize {
+    return _pascal(n, r, &mut HashMap::new())
+}
+
+fn _pascal (n: usize, r: usize, memo: &mut HashMap<(usize, usize), usize>) -> usize {
+    if memo.contains_key(&(n, r)) {
+        return *memo.get(&(n, r)).unwrap();
+    }
+
+    if n == 0 || n == r || r == 0 {
+        return 1
+    }
+
+    let v =  _pascal (n-1, r-1, memo) + _pascal (n-1, r, memo);
+    memo.insert((n ,r), v);
+    return v
 }
